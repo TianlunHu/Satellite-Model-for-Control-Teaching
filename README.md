@@ -1,4 +1,5 @@
 # Submission for Sitellite Model
+![image](http://github.com/TianlunHu/Satellite-Model-for-Control-Teaching/raw/master/projekt_build/result.png)
 ## 1.'Simulink' folder :
 includes Simulink models that implement the orbit-height control of the Satellite demo.  
 ## 2.'lib' folder 
