@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Satellite</title>
+    <link href="lib/3rdparty/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="lib/3rdparty/bootstrap-slider.css" rel="stylesheet">
+    <link href="lib/style.css" rel="stylesheet">
+    <style>
+        /*.popover{*/
+            /*min-width: 250px;
+        /*}*/
+
+        #topbar {
+            width: 100%;
+            height: 15%;
+        }
+        #renderCanvas {
+            width: 65%;
+            height: 85%;
+            touch-action: none;
+        }
+        #sidebar {
+            width: 35%;
+            height: 85%;
+            float: right;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+
+<div id="topbar" class="container">
+<p id="eq1">$${}$$</p>
+<div id="presetdiv" style="position: absolute; right: 1em; top: 1em"></div>
+
+</div>
+
+<div id="overlay" style="position: absolute; right: 40%; bottom: 0; z-index: 10000; margin: 1em;">
+</div>
+<canvas id="renderCanvas"></canvas>
+
+<div id="sidebar" class="container">
+<p>Input:Reference Orbit Height <input id="height" type="text" name="my_h" value="36" onchange="getInput()"/>
+
+<p>Controller:
+    <p>Kp&nbsp;:<input type="text" name="my_p" value="5" onchange="getInput()"/>
+    <p>Ki&nbsp;&nbsp;:<input type="text" name="my_i" value="0" onchange="getInput()"/>
+    <p>Kd&nbsp;:<input type="text" name="my_d" value="10" onchange="getInput()"/>
+    
+<p>Change Modes:
+    
+<p> <button type="button"  onclick="clic4()">Height Control mode</button>
+
+	<button type="button"  onclick="clic5()">Manuplating Mode</button>
+
+<p>Reset:
+    
+<p> <input type="button" value=RESET onclick="clic6()" style="width:120px;height:40px;border:3px red double;">
+    
+</div>
+
+<script type="text/x-mathjax-config">
+// based on TeX-AMS_CHTML and https://ro-che.info/articles/2017-04-02-deploying-mathjax
+MathJax.Hub.Config({
+  jax: ["input/TeX","output/CommonHTML"],
+  extensions: ["tex2jax.js","MathMenu.js","MathZoom.js", "AssistiveMML.js"],
+  TeX: {
+    extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"]
+  },
+  "HTML-CSS": {
+    availableFonts: ["TeX"],
+    imageFont: null
+  },
+  MathMenu: {
+    showRenderer: false,
+    showFontMenu: false,
+    showLocale: false
+  },
+  menuSettings: {zoom: "Double-Click"}
+});
+</script>
+    
+    <script src="lib/3rdparty/oimo.js"></script>
+	<script src="lib/3rdparty/babylon.max.js"></script>
+	<!--<script src="lib/3rdparty/babylon.canvas2d.max.js"></script>-->
+	<script src="lib/3rdparty/jquery.js"></script>
+	<script src="lib/3rdparty/bootstrap/js/bootstrap.min.js"></script>
+	<script src="lib/3rdparty/bootstrap-slider.js"></script>
+	<script src="lib/3rdparty/smoothie.js"></script>
+	<script src="lib/3rdparty/emitter.js"></script>
+	<script type="text/javascript" src="lib/3rdparty/MathJax/MathJax.js"></script>
+	<script src="lib/3rdparty/Chart.min.js"></script>	
+	<script src="lib/common.js"></script>
+	<script src="lib/datasource.js"></script>
+	<script src="lib/babylon.js"></script>
+	<script src="lib/quaternion.js"></script>
+	<script src="lib/ui.js"></script>
+	<script src="lib/ui-extra.js"></script>
+	<script src="lib/quadcop.js"></script>
+    <script src="satelliteref_final.js"></script>
+    <script src="satelliteref_w_final.js"></script>
+    <script src="satellitereal_final.js"></script>
+    <script src="plot.js"></script>
+    <script src="root.js"></script>
+
+<script>
+    "use strict";
+//****************************************************************************//input from browser
+        const Data = new WebSocketDataSource("ws://localhost:30000/ws",{});
+//***********************************************//
+        var canvas = document.getElementById("renderCanvas");
+        var engine = new BABYLON.Engine(canvas, true);
+
+// This creates a basic Babylon Scene object (non-mesh)
+        var scene = new BABYLON.Scene(engine);
+        
+//*****************************************************************//Class for communication with Websocket
+        var mysatellite = new real_Satellite(scene); 
+        var refsatelliteW = new ref_SatelliteW(scene);
+        var manusatellite = new ref_Satellite(scene);
+        
+        Data.addSink(refsatelliteW);
+        Data.addSink(mysatellite);
+        Data.addSink(manusatellite);
+
+//*************************************************************************//camera and light
+           
+        var camera_f = new BABYLON.FollowCamera("FollowCam1", new BABYLON.Vector3(0, 50, -50), scene);
+    
+        camera_f.radius = 20;
+        camera_f.heightOffset = 16;
+        camera_f.rotationOffset = 0;
+        camera_f.attachControl(canvas, true);
+            
+        var camera_g = new BABYLON.FollowCamera("FollowCam2", new BABYLON.Vector3(0, 50, -50), scene);
+    
+        camera_g.radius = 20;
+        camera_g.heightOffset = 16;
+        camera_g.rotationOffset = 0;
+        camera_g.attachControl(canvas, true);
+            
+        var camera_r = new BABYLON.ArcRotateCamera("FreeCam", -Math.PI/4, Math.PI/8, 25, BABYLON.Vector3(0,0,0), scene);
+        camera_r.setPosition(new BABYLON.Vector3(20, 60, 100));
+            
+        camera_r.attachControl(canvas, true);
+    
+        // This creates a light, aiming 0,1,0 - to the sky (non-mesh)
+        var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+        // Default intensity is 1. Let's dim the light a small amount
+        light.intensity = 0.7;
+            
+        scene.activeCameras.push(camera_f);
+        camera_f.viewport = new BABYLON.Viewport(0, 0, 0.4, 1);
+        scene.activeCameras.push(camera_r);
+        camera_r.viewport = new BABYLON.Viewport(0.4, 0, 0.6, 1);
+            
+//***************************************************************************//create shapes
+        scene.clearColor = new BABYLON.Color3(0.0, 0.0, 0.0);
+        //Sun
+        //BABYLON.ParticleHelper.CreateAsync("sun", scene).then((set) => {set.start();});
+    
+        //Earth
+        var earth = BABYLON.MeshBuilder.CreateSphere("earth", {diameter:30}, scene);
+        var earthSurface = new BABYLON.StandardMaterial("earthSurface", scene);
+        //earthSurface.diffuseTexture = new BABYLON.Texture("/textures/3_no_ice_clouds_16k.jpg", scene);
+        earthSurface.diffuseTexture = new BABYLON.Texture("http://2.bp.blogspot.com/-ve1f2PClvus/UGNo6CmITpI/AAAAAAAAANw/IEjDJSmaABQ/s1600/World-satellite+map.jpg", scene, false, false);
+        earthSurface.diffuseTexture.hasAlpha = true;
+        earthSurface.backFaceCulling = true;
+        earthSurface.diffuseTexture.uAng = 0;
+        earthSurface.diffuseTexture.vAng = 0;
+        earthSurface.diffuseTexture.wAng = 0;
+        earthSurface.diffuseTexture.uScale = 1.0;
+        earthSurface.diffuseTexture.vScale = 1.0;
+        earthSurface.diffuseTexture.wScale = 1.0;
+
+        earth.material = earthSurface;
+        
+        //Skybox
+        var path = "https://raw.githubusercontent.com/BabylonJS/Website/master/Assets/skybox/";
+        var skybox = BABYLON.Mesh.CreateBox("skyBox", 1000.0, scene);
+        var skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
+        skyboxMaterial.backFaceCulling = false;
+        skyboxMaterial.disableLighting = true;
+
+        skybox.infiniteDistance = true;
+        skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture(path+"nebula", scene);
+        skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+        skybox.material = skyboxMaterial;
+    
+        var inputMap = {};
+	    
+	    scene.actionManager = new BABYLON.ActionManager(scene);
+        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {								
+        inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
+}));
+        scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {								
+        inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
+}));
+    
+//****************************************************************************//input from browser
+        var a = 0;
+        var h_ref = 36;
+        var mo = 0;
+        var P = 5;
+        var I = 0;
+        var D = 10;
+        var reset = true;
+    
+        var myInput = {'h_ref':h_ref,'a_t':a,'mode':mo,'P':P,'I':I,'D':D,'Reset':reset};
+    
+        for (let k in myInput){
+            Data.addParameter(myInput,k,k);
+        }
+    
+        function clic4(){
+            myInput['mode'] = 0;
+            refsatelliteW.resetLine();
+            manusatellite.resetLine();
+            mysatellite.resetLine();
+            scene.activeCameras.push(camera_f);
+            camera_f.viewport = new BABYLON.Viewport(0, 0, 0.4, 1);
+            scene.activeCameras.push(camera_r);
+            camera_r.viewport = new BABYLON.Viewport(0.4, 0, 0.6, 1);
+        };
+                
+        function clic5(){
+            myInput['mode'] = 1;
+            refsatelliteW.resetLine();
+            manusatellite.resetLine();
+            mysatellite.resetLine();
+            //scene.activeCamera = camera_r;
+            scene.activeCameras.push(camera_g);
+            camera_g.viewport = new BABYLON.Viewport(0, 0, 0.4, 1);
+            scene.activeCameras.push(camera_r);
+            camera_r.viewport = new BABYLON.Viewport(0.4, 0, 0.6, 1);
+            
+            document.getElementById("height").value = 36;
+            myInput['h_ref'] = 36;
+            h_ref = 36;
+            
+            var myPoints = [];
+            var deltaTheta = 0.1;
+            var deltaY = 0.005;
+            var radius = document.getElementById("height").value;
+            var theta = 0;
+            var Y = 0;
+            for (var i = 0; i<80; i++) {
+                   myPoints.push(new BABYLON.Vector3(radius * Math.cos(theta), Y, radius * Math.sin(theta)));
+                   theta += deltaTheta;
+                }
+            
+            //Create reference orbit
+            scene.getMeshByName("lines").dispose();
+            var lines = BABYLON.MeshBuilder.CreateDashedLines("lines", {points: myPoints, dashNb:80}, scene);
+            
+        };
+    
+        var flag = 0;
+        var flagm = 0;
+    
+        function clic6(){
+            reset = !reset;
+            myInput['Reset'] = reset;
+            myInput['mode']  = 0;
+            refsatelliteW.resetLine();
+            manusatellite.resetLine();
+            mysatellite.resetLine();
+            //mysatellite.explosion_stop();
+            scene.activeCameras.push(camera_f);
+            camera_f.viewport = new BABYLON.Viewport(0, 0, 0.4, 1);
+            scene.activeCameras.push(camera_r);
+            camera_r.viewport = new BABYLON.Viewport(0.4, 0, 0.6, 1);
+                
+            document.getElementById("height").value = 36;
+            myInput['h_ref'] = 36;
+            h_ref = 36;
+
+            var myPoints = [];
+            var deltaTheta = 0.1;
+            var deltaY = 0.005;
+            var radius = document.getElementById("height").value;
+            var theta = 0;
+            var Y = 0;
+            for (var i = 0; i<80; i++) {
+                   myPoints.push(new BABYLON.Vector3(radius * Math.cos(theta), Y, radius * Math.sin(theta)));
+                   theta += deltaTheta;
+                }
+            
+            //Create reference orbit
+            scene.getMeshByName("lines").dispose();
+            var lines = BABYLON.MeshBuilder.CreateDashedLines("lines", {points: myPoints, dashNb:80}, scene);
+        };
+            
+        /*function mouse(){
+                myInput['Reset'] = 0;
+        }*/
+    
+        var myPoints = [];
+        var deltaTheta = 0.1;
+        var deltaY = 0.005;
+        var radius = document.getElementById("height").value;
+        var theta = 0;
+        var Y = 0;
+        for (var i = 0; i<80; i++) {
+            myPoints.push(new BABYLON.Vector3(radius * Math.cos(theta), Y, radius * Math.sin(theta)));
+            theta += deltaTheta;
+        }
+        var lines = BABYLON.MeshBuilder.CreateDashedLines("lines", {points: myPoints, dashNb:80}, scene);
+
+        function getInput(){
+            
+            var h_ref = parseInt($("input[name='my_h']").val());
+            //var h_ref = document.getElementById("height").value;
+            var h_bevor = myInput['h_ref'];
+            myInput['h_ref'] = h_ref;
+                
+            var P = parseInt($("input[name='my_p']").val());
+            myInput['P'] = P;
+            var I = parseInt($("input[name='my_i']").val());
+            myInput['I'] = I;
+            var D = parseInt($("input[name='my_d']").val());
+            myInput['D'] = D;
+                
+            var myPoints = [];
+            var deltaTheta = 0.1;
+            var deltaY = 0.005;
+            var radius = document.getElementById("height").value;
+            var theta = 0;
+            var Y = 0;
+            for (var i = 0; i<80; i++) {
+                myPoints.push(new BABYLON.Vector3(radius * Math.cos(theta), Y, radius * Math.sin(theta)));
+                theta += deltaTheta;
+            }
+            //Create reference orbit
+            scene.getMeshByName("lines").dispose();
+            var lines = BABYLON.MeshBuilder.CreateDashedLines("lines", {points: myPoints, dashNb:80}, scene);
+
+            //lines.color = new BABYLON.Color3(0, 1, 0.1);
+                
+            if(h_bevor<h_ref){
+                mysatellite.push_animation();
+                refsatelliteW.resetLine();
+            }
+                
+            if(h_bevor>h_ref){
+                mysatellite.pull_animation();
+                refsatelliteW.resetLine();
+            }
+                
+            mysatellite.begain_action();
+            mysatellite.end_action();
+                
+        };
+            
+//**********************************************************************//animation
+        var X_R = refsatelliteW.satelliteRW.position.x;
+        var Z_R = refsatelliteW.satelliteRW.position.z;
+        var r = Math.sqrt(X_R*X_R+Z_R*Z_R);
+        var theta = 0;
+            
+    
+        scene.onBeforeRenderObservable.add(()=>{
+            
+               
+                myInput['a_t'] = 0;
+                  
+			    if(!(inputMap["w"] || !inputMap["s"])){
+			            myInput['a_t'] = 0;	 
+			    }
+            
+                if(inputMap["w"] || inputMap["ArrowUp"]){
+			        	myInput['a_t'] = +0.006;
+                        manusatellite.push_animation();
+                        manusatellite.begain_action();
+                        manusatellite.end_action(); 		 
+			    } 
+			        
+                if(inputMap["a"] || inputMap["ArrowLeft"]){
+			               
+			    } 
+            
+			    if(inputMap["s"] || inputMap["ArrowDown"]){
+			        	myInput['a_t'] = -0.006;
+                        manusatellite.pull_animation();
+                        manusatellite.begain_action();
+                        manusatellite.end_action();
+				    	
+			    } 
+            
+			    if(inputMap["d"] || inputMap["ArrowRight"]){
+			          
+			    }    
+            
+                earth.rotate(BABYLON.Axis.Y, -Math.PI / 1000, BABYLON.Space.LOCAL);
+                     
+                var pos_x = mysatellite.satelliteM.position.x;
+                var pos_z = mysatellite.satelliteM.position.z;
+                var height = Math.sqrt(pos_x*pos_x + pos_z*pos_z);
+                    
+                if(height==36){flag=0}
+            
+                if(height<=15&&flag==0)
+                {
+                    flag = 1;
+                    mysatellite.explosion_start();
+                }
+
+                var pos_xm = manusatellite.x_r;
+                var pos_zm = manusatellite.z_r;
+                var heightm = Math.sqrt(pos_xm*pos_xm + pos_zm*pos_zm);
+                    
+                if(heightm<=36.1&&heightm>=35.9){flagm=0}
+                    
+                if(heightm<=15&&flagm==0)
+                {
+                    flagm = 1;
+                    manusatellite.explosion_start();
+                }
+		    });
+          
+            camera_f.target = mysatellite.satelliteM;
+            camera_f.lockedTarget = mysatellite.satelliteM;
+            camera_g.target = manusatellite.satelliteR;
+            camera_g.lockedTarget = manusatellite.satelliteR;
+//***************************************************************************//Transfer function
+   
+    const eq1Template = '\\mathbf{K(s) = \\ \\color{green}{\\underbrace{<k/> \\; \\color{black}{\\frac{<Kz1/><Kz2/><Kz3/>}{<Kp1/><Kp2/><Kp3/>}}}_{K(s)}} \\; }';
+    const eq1Elements = [
+        ['k', EqnElementScalar, {value: 0.1}],
+        ['Kz1', EqnElementTF, {re:-1 , im: 0.0, enabled: true}],
+        ['Kz2', EqnElementTF, {re: 2.0, im: 0.0, enabled: false}],
+        ['Kz3', EqnElementTF, {re: 2.0, im: -1.0, enabled: false}],
+        ['Kp1', EqnElementTF, {re:-10.0, im: 0.0, enabled: true}],
+        ['Kp2', EqnElementTF, {re: 3.0, im: 3.0, enabled: false}],
+        ['Kp3', EqnElementTF, {re: 1.0, im: 0.0, enabled: false}],
+        ['Gz1', EqnElementTF, {re:-2.0, im: 0.0, enabled: false}],
+        ['Gz2', EqnElementTF, {re:-2.0, im: 0.0, enabled: false}],
+        ['Gz3', EqnElementTF, {re: 2.0, im: 0.0, enabled: false}],
+        ['Gp1', EqnElementTF, {re:-3.0, im: 0.0, enabled: false}],
+        ['Gp2', EqnElementTF, {re:-2.0, im:  -2, enabled: false}],
+        ['Gp3', EqnElementTF, {re:-2.0, im:   2, enabled: false}],
+    ];
+    const eq1 = new InteractiveEquation('eq1', eq1Template, eq1Elements);
+    eq1.preRenderHook = function(template) {
+        if (!this.values.Kz1_enabled && !this.values.Kz2_enabled && !this.values.Kz3_enabled) {
+            template = template.replace('<Kz1/><Kz2/><Kz3/>', '1\\phantom{\\Big(}<Kz1/><Kz2/><Kz3/>');
+        }
+        if (!this.values.Kp1_enabled && !this.values.Kp2_enabled && !this.values.Kp3_enabled) {
+            template = template.replace('<Kp1/><Kp2/><Kp3/>', '1\\phantom{\\Big(}<Kp1/><Kp2/><Kp3/>');
+        }
+        if (!this.values.Gz1_enabled && !this.values.Gz2_enabled && !this.values.Gz3_enabled) {
+            template = template.replace('<Gz1/><Gz2/><Gz3/>', '1\\phantom{\\Big(}<Gz1/><Gz2/><Gz3/>');
+        }
+        if (!this.values.Gp1_enabled && !this.values.Gp2_enabled && !this.values.Gp3_enabled) {
+            template = template.replace('<Gp1/><Gp2/><Gp3/>', '1\\phantom{\\Big(}<Gp1/><Gp2/><Gp3/>');
+        }
+        return template;
+    };
+
+    eq1.combinedValues = {};
+    eq1.on('change', function() {
+        eq1.combinedValues.k = eq1.values.k_val;
+        eq1.combinedValues.re_gzp = [];
+        eq1.combinedValues.im_gzp = [];
+        eq1.combinedValues.en_gzp = [];
+        for(let elem of ['Gz1', 'Gz2', 'Gz3', 'Gp1', 'Gp2', 'Gp3']) {
+            eq1.combinedValues.re_gzp.push(eq1.values[elem + '_re']);
+            eq1.combinedValues.im_gzp.push(eq1.values[elem + '_im']);
+            eq1.combinedValues.en_gzp.push(eq1.values[elem + '_enabled']);
+        }
+        eq1.combinedValues.re_kzp = [];
+        eq1.combinedValues.im_kzp = [];
+        eq1.combinedValues.en_kzp = [];
+        for(let elem of ['Kz1', 'Kz2', 'Kz3', 'Kp1', 'Kp2', 'Kp3']) {
+            eq1.combinedValues.re_kzp.push(eq1.values[elem + '_re']);
+            eq1.combinedValues.im_kzp.push(eq1.values[elem + '_im']);
+            eq1.combinedValues.en_kzp.push(eq1.values[elem + '_enabled']);
+        }
+        console.log(eq1.combinedValues);
+
+    });
+    eq1.updateValues();
+
+    for (let k in eq1.combinedValues) {
+        Data.addParameter(eq1.combinedValues, k, k);
+    }
+
+    const presets = [
+        {
+            name: 'vorhandener Regler',
+            k: {value: 2},
+            Kz1: {re:  -10, im:  0.0, enabled: true},
+            Kz2: {re: -1.5, im:  0.0, enabled: false},
+            Kz3: {re:  2.0, im:  0.0, enabled: false},
+            Kp1: {re:  0.0, im:  0.0, enabled: true},
+            Kp2: {re: -1.5, im:  1.0, enabled: false},
+            Kp3: {re: -1.5, im: -1.0, enabled: false},
+            Gz1: {re: -2.0, im:  0.0, enabled: false},
+            Gz2: {re: -2.0, im:  0.0, enabled: false},
+            Gz3: {re:  2.0, im:  0.0, enabled: false},
+            Gp1: {re: -3.0, im:  0.0, enabled: true},
+            Gp2: {re: -2.0, im:  0.0, enabled: false},
+            Gp3: {re: -2.0, im:  0.0, enabled: false},
+        },
+        {
+            name: 'verbesserter Regler',
+            k: {value: 5},
+            Kz1: {re: -2.5, im:  0.0, enabled: true},
+            Kz2: {re: -1.5, im:  0.0, enabled: false},
+            Kz3: {re:  2.0, im:  0.0, enabled: false},
+            Kp1: {re:  0.0, im:  0.0, enabled: true},
+            Kp2: {re: -1.5, im:  1.0, enabled: false},
+            Kp3: {re: -1.5, im: -1.0, enabled: false},
+            Gz1: {re: -2.0, im:  0.0, enabled: false},
+            Gz2: {re: -2.0, im:  0.0, enabled: false},
+            Gz3: {re:  2.0, im:  0.0, enabled: false},
+            Gp1: {re: -3.0, im:  0.0, enabled: true},
+            Gp2: {re: -2.0, im:  0.0, enabled: false},
+            Gp3: {re: -2.0, im:  0.0, enabled: false},
+        },
+//        {
+//            name: 'arrow testcase (also crashes simulink diagram)',
+//            k: {value: 3},
+//            Kz1: {re: -1.0, im: 0.0, enabled: true},
+//            Kz2: {re: -1.5, im: 0.0, enabled: true},
+//            Kz3: {re: 2.0, im: -1.0, enabled: false},
+//            Kp1: {re: -2.0, im: 0.0, enabled: true},
+//            Kp2: {re: -2.0, im: 0.0, enabled: true},
+//            Kp3: {re: -2.0, im: 0.0, enabled: true},
+//            Gz1: {re: -3.0, im: 0.0, enabled: true},
+//            Gz2: {re: -2.0, im: 0.0, enabled: false},
+//            Gz3: {re:  2.0, im: 0.0, enabled: false},
+//            Gp1: {re: -0.5, im: 0.0, enabled: true},
+//            Gp2: {re: -2.0, im: 0.0, enabled: true},
+//            Gp3: {re: -2.0, im: 0.0, enabled: false},
+//        },
+//        {
+//            name: 'funny example, march 2, 13:29, also crashes',
+//            k: {value: 2},
+//            Kz1: {re: -2.5, im:  0.0, enabled: true},
+//            Kz2: {re: -1.5, im:  0.0, enabled: false},
+//            Kz3: {re:  2.0, im:  0.0, enabled: false},
+//            Kp1: {re: -1.0, im:  0.0, enabled: true},
+//            Kp2: {re: -0.5, im:  4.0, enabled: true},
+//            Kp3: {re: -0.5, im: -4.0, enabled: true},
+//            Gz1: {re: -2.0, im:  0.0, enabled: true},
+//            Gz2: {re: -2.0, im:  0.0, enabled: false},
+//            Gz3: {re:  2.0, im:  0.0, enabled: false},
+//            Gp1: {re:  0.0, im:  0.0, enabled: true},
+//            Gp2: {re: -2.0, im:  0.0, enabled: false},
+//            Gp3: {re: -2.0, im:  0.0, enabled: false},
+//        },
+        {
+            name: 'zu niedrige Dämpfung',
+            k: {value: 2},
+            Kz1: {re: -2.5, im:  0.0, enabled: true},
+            Kz2: {re: -1.5, im:  0.0, enabled: false},
+            Kz3: {re:  2.0, im:  0.0, enabled: false},
+            Kp1: {re: -1.0, im:  0.0, enabled: true},
+            Kp2: {re: -2.0, im:  0.0, enabled: false},
+            Kp3: {re: -2.0, im:  0.0, enabled: false},
+            Gz1: {re: -2.0, im:  0.0, enabled: true},
+            Gz2: {re: -2.0, im:  0.0, enabled: false},
+            Gz3: {re:  2.0, im:  0.0, enabled: false},
+            Gp1: {re:  0.0, im:  0.0, enabled: true},
+            Gp2: {re: -1.5, im:  1.0, enabled: true},
+            Gp3: {re: -1.5, im: -1.0, enabled: true},
+        },
+    ];
+    //const presetDropdown = new EqPresetDropdown('presetDropdown', 'presetdiv', eq1, presets);
+    // eq1.applyPreset(presets[0]);
+
+//    insertHtml('sidebar', '<br>');
+//    const posZPlot = new myLinePlot('posZPlot', 'sidebar', 400, 400, ['hr#2', 'rho_m#2'], ['Ref Height','Real Height'], ['#ff7f0e','#09cb00'], [30, 45]);'#1f77b4','#ff1f5a' 
+//    posZPlot.clip = false;
+//    Data.addSink(posZPlot);
+    
+    insertHtml('sidebar', '<br>');
+    const dynamic_diagram0_Panel = new CollapsiblePanel('dynamic_diagram0', 'sidebar', 'Height of Satellite', true);
+    const posZPlot0 = new myLinePlot('posZPlot0', 'dynamic_diagram0', 400, 400, ['hr#2', 'rho_m#2'], ['Ref Height','Real Height'], ['#ff7f0e','#09cb00'], [30, 45]);/*'#1f77b4','#ff1f5a' */
+    posZPlot0.clip = false;
+    Data.addSink(posZPlot0);
+    
+    const dynamic_diagram1_Panel = new CollapsiblePanel('dynamic_diagram1', 'sidebar', 'tangential Velocity of Satellite', true);
+    const posZPlot1 = new myLinePlot('posZPlot1', 'dynamic_diagram1', 400, 400, ['v_r#2', 'v#2'], ['Ref Velocity', 'Real Velocity'], ['#ff7f0e','#09cb00'], [0, 1.5]);
+    posZPlot1.clip = false;
+    Data.addSink(posZPlot1);
+
+    const dynamic_diagram2_Panel = new CollapsiblePanel('dynamic_diagram2', 'sidebar', 'tangential Acceleration of Satellite', true);
+    const posZPlot2= new myLinePlot('posZPlot2', 'dynamic_diagram2', 400, 400, ['a_t#2'], ['tangential Acceleration'], ['#09cb00'], [0, 0.5]);
+    posZPlot2.clip = false;
+    Data.addSink(posZPlot2);
+        
+//***************************************************************************//
+        
+        engine.runRenderLoop(function () {
+            if (scene) {
+                scene.render();
+            }
+        });
+
+        // Resize
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+ </script>
+</body>
+</html>
