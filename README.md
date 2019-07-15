@@ -1,5 +1,5 @@
 # Submission for Sitellite Model
-![image](projekt_bild/result.png)
+![image](projekt_bild/interface.png)
 ## 1.'Simulink' folder :
 includes Simulink models that implement the orbit-height control of the Satellite demo.  
 ## 2.'lib' folder 
