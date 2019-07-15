@@ -1,0 +1,10 @@
+The files in the final submission:
+1.'projekt_bild' folder: include all screensohts and pictures that have been used in presentation and final report.
+2.'satellite' folder: include all codes of JavaScript and the HTML file of the demo.
+3.'Simulink' folder: include two versions of Simulink model and generated executions of this demo, 
+                     Satellite_final8 is the model with a adjustable PID controller.
+                     Satellite_final9 is the model with a adjustable transfer function of controller
+4. PDF file is the final report.
+5. mp4 file is the sreencast of the demo.
+6. zip file is the material of Latex.
+7. 'presentation' folder: include PPT and video for the project presetation.
